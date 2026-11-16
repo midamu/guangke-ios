@@ -17,8 +17,9 @@ concurrency:
 
 jobs:
   build:
-    # iOS 只能用 macOS 编译；macos-15 自带 Xcode 16
-    runs-on: macos-15
+    # iOS 只能用 macOS 编译。macos-15 池子排不上（连续三次 15 分钟被取消、无日志），
+    # 换 macos-14 试试：不同镜像池，容量有时更宽松。
+    runs-on: macos-14
     timeout-minutes: 60
 
     steps:
