@@ -9,18 +9,27 @@ on:
       - "ios/**"
       - ".github/workflows/ios-unsigned.yml"
 
-# macOS runner 名额紧张，排队可能 20~40 分钟。
-# 同一分支上还在排队的旧任务会被新 push 自动取消，避免旧代码占着名额。
-concurrency:
-  group: ios-unsigned-${{ github.ref }}
-  cancel-in-progress: true
+# 同一分支上还在排队的旧任务会被新 push 自动取消（见 job 级 concurrency）。
 
 jobs:
   build:
-    # iOS 只能用 macOS 编译。macos-15 池子排不上（连续三次 15 分钟被取消、无日志），
-    # 换 macos-14 试试：不同镜像池，容量有时更宽松。
-    runs-on: macos-14
+    # macOS arm64 的免费 runner 经常排队 15 分钟后被 GitHub 放弃
+    # （注解：The job was not acquired by Runner of type hosted even after multiple attempts）。
+    # 这里同时向 arm64 和 Intel 两个池子排队，哪个先拿到机器哪个就出包。
+    # macos-14 已废弃（configuration 'macos-14-arm64-us-default' is not supported），不要用。
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+
+    # 放在 job 级而不是 workflow 级：matrix 上下文在 workflow 级 concurrency 里读不到，
+    # 否则两个池子会哈希到同一个 group 互相取消。
+    concurrency:
+      group: ios-unsigned-${{ github.ref }}-${{ matrix.runner }}
+      cancel-in-progress: true
 
     steps:
       - uses: actions/checkout@v4
@@ -83,7 +92,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: GuangXiaoKe-unsigned-ipa
+          name: GuangXiaoKe-unsigned-ipa-${{ matrix.runner }}
           path: out/GuangXiaoKe-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
@@ -93,7 +102,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-build-report
+          name: ios-build-report-${{ matrix.runner }}
           path: |
             ios/shared/build/reports/tests/
             ios/composeApp/build/reports/
