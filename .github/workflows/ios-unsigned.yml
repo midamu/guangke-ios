@@ -9,6 +9,12 @@ on:
       - "ios/**"
       - ".github/workflows/ios-unsigned.yml"
 
+# macOS runner 名额紧张，排队可能 20~40 分钟。
+# 同一分支上还在排队的旧任务会被新 push 自动取消，避免旧代码占着名额。
+concurrency:
+  group: ios-unsigned-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     # iOS 只能用 macOS 编译；macos-15 自带 Xcode 16

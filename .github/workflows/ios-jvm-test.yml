@@ -17,6 +17,11 @@ on:
       - "ios/**"
   workflow_dispatch:
 
+# 同一分支连续 push 时只跑最新的那次
+concurrency:
+  group: ios-jvm-test-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
