@@ -7,7 +7,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.parseToJsonElement
 
 /**
  * 正方教务（jwglxt）课表 JSON 解析。与 Android 版 `ZfsoftParser` 同逻辑，
