@@ -1,5 +1,7 @@
 # XcodeGen 工程定义：不用手写 project.pbxproj，CI 里 `xcodegen generate` 即可。
 # 本文件必须和 iosApp 的源码放在同一目录（workflow 在 ios/iosApp 里执行 xcodegen）。
+#
+# 路径基准：SRCROOT = ios/iosApp，所以 framework 在 ../composeApp/build/bin/...
 name: GuangXiaoKe
 
 options:
@@ -27,9 +29,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jianke.schedule.ios
         INFOPLIST_FILE: Info.plist
-        # SRCROOT = ios/iosApp，Compose framework 在 ios/composeApp/build/bin/...
+        # SRCROOT = ios/iosApp → ../composeApp 就是 ios/composeApp
         FRAMEWORK_SEARCH_PATHS:
-          - "$(SRCROOT)/../../composeApp/build/bin/iosArm64/releaseFramework"
+          - "$(SRCROOT)/../composeApp/build/bin/iosArm64/releaseFramework"
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/Frameworks"
@@ -39,6 +41,6 @@ targets:
         CODE_SIGN_IDENTITY: ""
     dependencies:
       # isStatic = true：静态框架，直接链进可执行文件，**不能 embed**
-      - framework: ../../composeApp/build/bin/iosArm64/releaseFramework/ComposeApp.framework
+      - framework: ../composeApp/build/bin/iosArm64/releaseFramework/ComposeApp.framework
         embed: false
         codeSign: false
