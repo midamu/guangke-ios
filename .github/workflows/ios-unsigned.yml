@@ -25,6 +25,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
 
+    # arm64 池子经常拿不到机器（15 分钟后被 GitHub 放弃）。
+    # 它挂掉不应该把整个 run 标红——只要 Intel 那条出了包就算成功。
+    continue-on-error: ${{ matrix.runner == 'macos-15' }}
+
     # 放在 job 级而不是 workflow 级：matrix 上下文在 workflow 级 concurrency 里读不到，
     # 否则两个池子会哈希到同一个 group 互相取消。
     concurrency:

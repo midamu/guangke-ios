@@ -24,6 +24,9 @@ keystore/
 .DS_Store
 Thumbs.db
 
+# CI 打包产物（IPA 等，本地验证用，不进仓库）
+out/
+
 # iOS：Gradle 产物与 XcodeGen 生成物都不进仓库
 ios/.gradle/
 ios/build/
