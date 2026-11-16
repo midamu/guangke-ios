@@ -119,7 +119,8 @@ class ParserTest {
     fun mondayAndPlusDays() {
         assertEquals("2026-09-14", IsoDate.mondayOf("2026-09-16"))
         assertEquals("2026-09-14", IsoDate.mondayOf("2026-09-14"))
-        assertEquals("2026-09-20", IsoDate.mondayOf("2026-09-20"))
+        // 2026-09-20 是周日，仍属于 14 号那一周
+        assertEquals("2026-09-14", IsoDate.mondayOf("2026-09-20"))
         assertEquals("2026-08-31", IsoDate.plusDays("2026-09-14", -14))
         assertEquals(31L, IsoDate.daysBetween("2026-09-14", "2026-08-14"))
     }
