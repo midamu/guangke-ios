@@ -12,9 +12,10 @@ import io.ktor.client.plugins.cookies.HttpCookies
 actual fun newHttpClient(): HttpClient = HttpClient(Darwin) {
     install(HttpCookies)
     install(HttpTimeout) {
-        requestTimeoutMillis = 25_000
-        connectTimeoutMillis = 10_000
-        socketTimeoutMillis = 25_000
+        // 学校站点在移动网络下偏慢；25 秒容易在 CAS 跳转链上误判超时
+        requestTimeoutMillis = 40_000
+        connectTimeoutMillis = 15_000
+        socketTimeoutMillis = 40_000
     }
     followRedirects = true
 }

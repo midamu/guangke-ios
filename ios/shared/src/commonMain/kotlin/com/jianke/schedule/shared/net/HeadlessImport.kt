@@ -48,13 +48,14 @@ class HeadlessImport(
         var via = ""
         val savedTgt = credentials.tgt()
         if (!savedTgt.isNullOrBlank()) {
-            ticket = cas.ticketFor(savedTgt)
+            ticket = runCatching { cas.ticketFor(savedTgt) }.getOrNull()
             if (ticket != null) via = "TGT 续期" else credentials.clearTgt()
         }
 
         // ② TGT 失效（或没有）→ 完整登录
         if (ticket == null) {
-            var result = cas.login(account.first, account.second)
+            var result = runCatching { cas.login(account.first, account.second) }
+                .getOrElse { return Result.Fallback("登录请求失败：${it.message}") }
             if (result is CasClient.LoginResult.NeedCaptcha) {
                 val s = solver ?: return Result.Fallback("需要图形验证码，但还没配置打码平台")
                 var answer: String? = null
@@ -87,7 +88,9 @@ class HeadlessImport(
         if (ticket.isNullOrBlank()) return Result.Fallback("没换到教务票据")
 
         // ③ 建会话 → 取 kbList
-        if (!cas.openJwSession(ticket)) return Result.Fallback("教务会话建立失败")
+        val sessionOk = runCatching { cas.openJwSession(ticket) }
+            .getOrElse { return Result.Fallback("教务会话请求失败：${it.message}") }
+        if (!sessionOk) return Result.Fallback("教务会话建立失败")
         jw.warmUp()
 
         val (xnm, xqm) = JwClient.academicTerm(todayYear, todayMonth)

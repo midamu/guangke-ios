@@ -9,6 +9,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import kotlinx.coroutines.delay
 
 /** 浏览器 UA：学校网关对裸客户端会 502，必须伪装成手机浏览器。 */
 const val USER_AGENT =
@@ -58,16 +59,27 @@ class Http(private val client: HttpClient) {
         body: String?,
         bodyType: ContentType? = null,
     ): TextResponse {
-        val response = if (body == null) {
-            client.get(url) { applyHeaders(headers) }
-        } else {
-            client.post(url) {
-                applyHeaders(headers)
-                setBody(body)
-                bodyType?.let { contentType(it) }
+        // 学校域名在国内移动网络下偶发连不上（ids 还有 AAAA，v6 不通时会先超时）。
+        // 重试一次 + 把异常翻译成人话，比把 Ktor 的原文抛给用户有用。
+        var lastError: Throwable? = null
+        repeat(MAX_TRIES) { attempt ->
+            try {
+                val response = if (body == null) {
+                    client.get(url) { applyHeaders(headers) }
+                } else {
+                    client.post(url) {
+                        applyHeaders(headers)
+                        setBody(body)
+                        bodyType?.let { contentType(it) }
+                    }
+                }
+                return TextResponse(response.status.value, response.bodyAsText())
+            } catch (t: Throwable) {
+                lastError = t
+                if (attempt < MAX_TRIES - 1) delay(1_200L)
             }
         }
-        return TextResponse(response.status.value, response.bodyAsText())
+        throw NetworkFailure(url, lastError ?: IllegalStateException("unknown"))
     }
 
     private fun HttpRequestBuilder.applyHeaders(headers: Map<String, String>) {
@@ -89,6 +101,39 @@ fun formBody(vararg pairs: Pair<String, String>): String =
 
 /** 单独编码一个值（拼 URL 参数用）。 */
 fun urlEncode(value: String): String = encode(value)
+
+/** 每个请求最多试几次（含首次）。 */
+private const val MAX_TRIES = 2
+
+/**
+ * 网络层失败，带上出错的具体 URL。
+ *
+ * Ktor 的原始异常是 `Request timeout has expired [url=..., request_timeout=...]`，
+ * 直接抛给用户完全看不懂；这里翻译成「连不上哪台机器」。
+ */
+class NetworkFailure(val url: String, cause: Throwable) :
+    Exception("连不上 ${hostOf(url)}（${describe(cause)}），请检查网络后重试", cause) {
+
+    companion object {
+        private fun hostOf(url: String): String =
+            url.substringAfter("://").substringBefore('/').substringBefore('?')
+
+        private fun describe(cause: Throwable): String {
+            val name = cause::class.simpleName.orEmpty()
+            val msg = cause.message.orEmpty()
+            return when {
+                name.contains("Timeout", ignoreCase = true) || msg.contains("timeout", ignoreCase = true) ->
+                    "请求超时"
+                msg.contains("App Transport Security", ignoreCase = true) ->
+                    "明文 HTTP 被系统拦截"
+                msg.contains("Could not connect", ignoreCase = true) ||
+                    msg.contains("Connection", ignoreCase = true) ->
+                    "连接被拒绝或中断"
+                else -> "网络错误 ${cause::class.simpleName}"
+            }
+        }
+    }
+}
 
 private fun encode(s: String): String {
     val sb = StringBuilder()
