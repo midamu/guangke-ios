@@ -11,8 +11,11 @@ import ComposeApp
 /// 为什么放在 Swift 而不是 Kotlin/Native：Keychain 的 API 全是 CFDictionary，
 /// Kotlin 侧手搓 `CFDictionaryCreateMutable` 又长又容易错，Swift 里十几行就够了。
 ///
+/// ⚠️ 类型名带 `Shared` 前缀：Kotlin/Native 导出 `shared` 模块的声明时会加模块前缀
+/// （避免不同模块重名），所以 Swift 里看到的是 `SharedCredentialVault`。
+///
 /// ⚠️ Keychain 条目**不会随 App 卸载删除**，所以「清除账号」必须显式调用 clear()。
-final class KeychainVault: NSObject, CredentialVault {
+final class KeychainVault: NSObject, SharedCredentialVault {
     private let service = "com.jianke.schedule.ios"
 
     private func query(_ key: String) -> [String: Any] {
@@ -62,7 +65,7 @@ final class KeychainVault: NSObject, CredentialVault {
 ///
 /// 照片不经过 Kotlin：选图、存盘、显示都在 Swift 侧完成，Compose 只负责把背景让出来。
 /// 约定文件名为 `wallpaper.jpg`，「有没有壁纸」就等于「文件在不在」。
-final class WallpaperHostImpl: NSObject, WallpaperHost {
+final class WallpaperHostImpl: NSObject, SharedWallpaperHost {
     static let fileName = "wallpaper.jpg"
 
     weak var presenter: UIViewController?
