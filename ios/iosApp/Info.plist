@@ -24,6 +24,16 @@
     <true/>
     <key>UILaunchScreen</key>
     <dict/>
+
+    <!--
+      Compose Multiplatform 启动约 0.5 秒后会在后台队列检查这个键，
+      缺失或为 false 时直接 abort()（表现为「打开闪退」）。
+      文案原文：Info.plist doesn't have a valid `CADisableMinimumFrameDurationOnPhone` entry...
+      它同时是 ProMotion 高刷（120Hz）生效的前提。
+    -->
+    <key>CADisableMinimumFrameDurationOnPhone</key>
+    <true/>
+
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
