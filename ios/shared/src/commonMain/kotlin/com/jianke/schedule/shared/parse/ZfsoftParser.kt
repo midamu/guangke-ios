@@ -121,7 +121,9 @@ object ZfsoftParser {
      */
     fun parseWeeks(text: String): List<Int> {
         if (text.isBlank()) return (1..20).toList()
-        val result = sortedSetOf<Int>()
+        // 用 HashSet + 末尾 sorted()：sortedSetOf() 是 JVM 专有的 stdlib 函数，
+        // Kotlin/Native（iOS）上编译不过 —— JVM 单测发现不了这类问题。
+        val result = HashSet<Int>()
         val parts = text.replace("第", "").split(",", "，", "、")
         for (raw in parts) {
             val part = raw.trim()
@@ -147,7 +149,7 @@ object ZfsoftParser {
                 }
             }
         }
-        return result.toList()
+        return result.sorted()
     }
 }
 
