@@ -1,0 +1,297 @@
+package com.jianke.schedule
+
+import com.jianke.schedule.data.ApiValidator
+import org.json.JSONArray
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * 用真实的板式复现「接口校验」这个环节。
+ *
+ * 页面第 7 周实际有 16 条（见导入诊断），接口返回 46 条记录。
+ *  - 周次字段读得到 -> 本周命中 16 条、多 0 条 -> 通过
+ *  - 周次字段读不到 -> 46 条全变「每周都有」-> 多出一堆 -> 必须拒绝
+ */
+class ApiValidatorTest {
+
+    private val pageCells: JSONArray = JSONArray().apply {
+        fun cell(name: String, day: Int, qsj: Int) {
+            put(
+                JSONObject()
+                    .put("t", name + "\n教室")
+                    .put("d", day - 1)
+                    .put("p", qsj - 1)
+                    .put("q", qsj.toString())
+                    .put("h", 100)
+                    .put("col", ""),
+            )
+        }
+        cell("高等数学Ⅰ（上）", 1, 1)
+        cell("大学英语Ⅰ", 3, 1)
+        cell("高等数学Ⅰ（上）", 5, 1)
+        cell("电气工程概论", 1, 3)
+        cell("思想道德与法治", 2, 3)
+        cell("高等数学Ⅰ（上）", 3, 3)
+        cell("大学英语Ⅰ", 4, 3)
+        cell("机械CAD/CAM-Solidworks", 1, 5)
+        cell("体育Ⅰ（羽毛球）", 2, 5)
+        cell("C语言程序设计", 1, 7)
+        cell("C语言程序设计", 2, 7)
+        cell("机械CAD/CAM-Solidworks", 5, 7)
+        cell("职业生涯规划", 1, 9)
+        cell("军事理论", 2, 9)
+        cell("思想道德与法治", 3, 9)
+        cell("军事理论", 4, 9)
+    }
+
+    private val body = "课表查询\n第7周 2026-10-12/2026-10-18\n周一"
+
+    /** 每门课本周都上；另外再塞 30 条「别的周才上」的课，模拟真实的 46 条。 */
+    private fun kbList(weekField: String?): String {
+        val arr = JSONArray()
+        fun add(name: String, day: Int, jcs: String, weeks: String) {
+            val o = JSONObject()
+                .put("kcmc", name)
+                .put("xqj", day.toString())
+                .put("jcs", jcs)
+                .put("cdmc", "教室")
+            if (weekField != null) o.put(weekField, weeks)
+            arr.put(o)
+        }
+        val here = listOf(
+            Triple("高等数学Ⅰ（上）", 1, "1-2"), Triple("大学英语Ⅰ", 3, "1-2"),
+            Triple("高等数学Ⅰ（上）", 5, "1-2"), Triple("电气工程概论", 1, "3-4"),
+            Triple("思想道德与法治", 2, "3-4"), Triple("高等数学Ⅰ（上）", 3, "3-4"),
+            Triple("大学英语Ⅰ", 4, "3-4"), Triple("机械CAD/CAM-Solidworks", 1, "5-6"),
+            Triple("体育Ⅰ（羽毛球）", 2, "5-6"), Triple("C语言程序设计", 1, "7-8"),
+            Triple("C语言程序设计", 2, "7-8"), Triple("机械CAD/CAM-Solidworks", 5, "7-8"),
+            Triple("职业生涯规划", 1, "9-10"), Triple("军事理论", 2, "9-10"),
+            Triple("思想道德与法治", 3, "9-10"), Triple("军事理论", 4, "9-10"),
+        )
+        here.forEach { (n, d, j) -> add(n, d, j, "7-7周") }
+        // 30 条只在别的周上的课
+        for (i in 1..30) add("选修课" + i, (i % 7) + 1, "1-2", "1-6周")
+        return JSONObject().put("kbList", arr).toString()
+    }
+
+    /**
+     * 真实翻车现场复现：
+     * 接口里 大学英语Ⅰ 周三第1节 的周次是 "4-5周,7-9周(单),10-16周"，
+     * 旧解析只截到 "4-5"，于是第 7 周漏课、校验不通过。
+     * 现在这段周次能正确解析，整张表应该双向对上并通过校验。
+     */
+    @Test
+    fun passesWithRealComplexWeekStrings() {
+        val arr = JSONArray()
+        fun add(name: String, day: Int, jcs: String, weeks: String) {
+            arr.put(
+                JSONObject().put("kcmc", name).put("xqj", day.toString())
+                    .put("jcs", jcs).put("cdmc", "教室").put("zcd", weeks),
+            )
+        }
+        // 与页面 16 条一一对应
+        add("高等数学Ⅰ（上）", 1, "1-2", "1-16周")
+        add("大学英语Ⅰ", 3, "1-2", "4-5周,7-9周(单),10-16周")   // ← 元凶这一条
+        add("高等数学Ⅰ（上）", 5, "1-2", "1-16周")
+        add("电气工程概论", 1, "3-4", "1-16周")
+        add("思想道德与法治", 2, "3-4", "4-7周,9-16周")
+        add("高等数学Ⅰ（上）", 3, "3-4", "1-16周")
+        add("大学英语Ⅰ", 4, "3-4", "4-7周,9-16周")
+        add("机械CAD/CAM-Solidworks", 1, "5-6", "1-16周")
+        add("体育Ⅰ（羽毛球）", 2, "5-6", "1-16周")
+        add("C语言程序设计", 1, "7-8", "1-16周")
+        add("C语言程序设计", 2, "7-8", "1-16周")
+        add("机械CAD/CAM-Solidworks", 5, "7-8", "1-16周")
+        add("职业生涯规划", 1, "9-10", "1-16周")
+        add("军事理论", 2, "9-10", "1-16周")
+        add("思想道德与法治", 3, "9-10", "4-5周,7-9周(单),10-12周")  // ← 元凶这一条
+        add("军事理论", 4, "9-10", "1-16周")
+        // 再塞 30 条别的周才上的课，凑成 46 条
+        for (i in 1..30) add("选修课" + i, (i % 7) + 1, "1-2", "1-6周")
+
+        val r = ApiValidator.validate(pageCells, body, JSONObject().put("kbList", arr).toString())
+        assertNotNull("修好周次解析后应该通过校验，实际：" + r.verdict, r.courses)
+        assertEquals(46, r.courses!!.size)
+    }
+
+    @Test
+    fun passesWhenWeekFieldIsReadable() {
+        val r = ApiValidator.validate(pageCells, body, kbList("qsjsz"))
+        assertNotNull("周次读得到时应该通过校验", r.courses)
+        assertTrue(r.verdict.contains("通过"))
+        assertEquals(46, r.courses!!.size)
+    }
+
+    @Test
+    fun alsoReadsStandardZcdField() {
+        val r = ApiValidator.validate(pageCells, body, kbList("zcd"))
+        assertNotNull(r.courses)
+    }
+
+    /**
+     * 线上翻车复现（2026-11-10）：页面一行 = 2 小节、每行约 80px。
+     * 体育Ⅰ（羽毛球）周日第 1 节起跨 4 行，接口写的是 1-8 节。
+     * 校验必须用页面实测行高换算，否则会把跨节大课算成 1-6，误判「接口不可信」。
+     */
+    /**
+     * 页面 body 里可能先出现别的「第N周」（例如学期周次下拉框），
+     * 取当前周必须优先认表头「第11周 2026-11-10/2026-11-16」。
+     */
+    @Test
+    fun currentWeekPrefersHeaderWithDates() {
+        val body = "课表查询\n第2周\n第3周\n第11周 2026-11-10/2026-11-16\n周一\n周二"
+        assertEquals(11, ApiValidator.currentWeekOf(body))
+        assertEquals(0, ApiValidator.currentWeekOf("没有周次信息"))
+        assertEquals(7, ApiValidator.currentWeekOf("第7周"))
+    }
+
+    @Test
+    fun pageSpanUsesMeasuredRowHeight() {
+        val cells = JSONArray()
+        fun cell(name: String, day: Int, row: Int, q: Int, h: Int) {
+            cells.put(
+                JSONObject().put("t", name + "\n教室").put("d", day - 1)
+                    .put("p", row).put("q", q.toString()).put("h", h).put("col", ""),
+            )
+        }
+        cell("高等数学Ⅰ（上）", 1, 0, 1, 80)
+        cell("体育Ⅰ（羽毛球）", 7, 0, 1, 320) // 跨 4 行
+        cell("大学英语Ⅰ", 3, 1, 3, 80) // 第 1 行、起始第 3 节 → 证明一行 2 小节
+
+        val arr = JSONArray()
+        arr.put(
+            JSONObject().put("kcmc", "高等数学Ⅰ（上）").put("xqj", "1")
+                .put("jcs", "1-2").put("cdmc", "教室").put("zcd", "1-16周"),
+        )
+        arr.put(
+            JSONObject().put("kcmc", "体育Ⅰ（羽毛球）").put("xqj", "7")
+                .put("jcs", "1-8").put("cdmc", "教室").put("zcd", "第11周"),
+        )
+        arr.put(
+            JSONObject().put("kcmc", "大学英语Ⅰ").put("xqj", "3")
+                .put("jcs", "3-4").put("cdmc", "教室").put("zcd", "1-16周"),
+        )
+        val api = JSONObject().put("kbList", arr).toString()
+        val body11 = "课表查询\n第11周 2026-11-10/2026-11-16\n周一"
+
+        val ok = ApiValidator.validate(cells, body11, api, false, 80.0)
+        assertNotNull("带实测行高时应该通过校验，实际：" + ok.verdict, ok.courses)
+
+        // 不给行高（退回旧行为 50px）时，体育会被算成 1-6，必须暴露出不匹配
+        val bad = ApiValidator.validate(cells, body11, api, false, 0.0)
+        assertNull("按 50px 硬算时应判为不匹配", bad.courses)
+        assertTrue("诊断里应点名体育，实际：" + bad.verdict, bad.verdict.contains("体育"))
+    }
+
+    @Test
+    fun rejectsWhenWeekFieldIsMissing() {
+        // 读不到周次 -> 46 条全变「每周都有」-> 本周多出 30 条 -> 必须拒绝
+        val r = ApiValidator.validate(pageCells, body, kbList(null))
+        assertNull("周次读不到时必须拒绝接口", r.courses)
+        assertTrue(r.verdict.contains("多") || r.verdict.contains("没有"))
+    }
+
+    @Test
+    fun rejectsWhenSemesterIsWrong() {
+        val arr = JSONArray()
+        for (i in 1..40) {
+            arr.put(
+                JSONObject().put("kcmc", "别的课" + i).put("xqj", "1")
+                    .put("jcs", "1-2").put("zcd", "1-16周"),
+            )
+        }
+        val r = ApiValidator.validate(pageCells, body, JSONObject().put("kbList", arr).toString())
+        assertNull(r.courses)
+    }
+
+    @Test
+    fun rejectsSingleMatchingCourseWithoutWeeks() {
+        val page = JSONArray().put(
+            JSONObject().put("t", "高等数学\n6-414").put("d", 0).put("p", 0)
+                .put("q", "1").put("h", 100),
+        )
+        val api = JSONObject().put(
+            "kbList",
+            JSONArray().put(JSONObject().put("kcmc", "高等数学").put("xqj", "1").put("jcs", "1-2")),
+        )
+        val result = ApiValidator.validate(page, "第7周", api.toString())
+        assertNull("没有周次时即使本周碰巧相同也不能直接采用接口", result.courses)
+    }
+
+    @Test
+    fun rejectsMatchingStartButDifferentDuration() {
+        val page = JSONArray().put(
+            JSONObject().put("t", "高等数学\n6-414").put("d", 0).put("p", 0)
+                .put("q", "1").put("h", 100),
+        )
+        val entry = JSONObject().put("kcmc", "高等数学").put("xqj", "1")
+            .put("jcs", "1-1").put("zcd", "7周")
+        val api = JSONObject().put("kbList", JSONArray().put(entry))
+        val result = ApiValidator.validate(page, "第7周", api.toString())
+        assertNull("起始节相同但结束节不同也必须拒绝", result.courses)
+    }
+
+    /**
+     * 页面周次下拉框把 1..W 连续列全时，W 就是可靠的学期总周数。
+     * 接口却有课声称上到 W 之后 —— 本周比对仍然对得上，但周次解析八成错了，
+     * 必须在周数校验这一关拦下来。
+     */
+    @Test
+    fun rejectsWeeksBeyondSemesterRange() {
+        // 用 2025 年的日期：今天不在任何范围内，识别退回第一个匹配 = 第 1 周
+        val sb = StringBuilder("课表查询\n")
+        var monday = java.time.LocalDate.of(2025, 8, 25)
+        for (w in 1..16) {
+            sb.append("第").append(w).append("周 ").append(monday).append("/")
+                .append(monday.plusDays(6)).append('\n')
+            monday = monday.plusWeeks(1)
+        }
+        val body16 = sb.toString()
+
+        // 页面 16 门课 + 劳动教育，共 17 格
+        val cells = JSONArray(pageCells.toString())
+        cells.put(
+            JSONObject().put("t", "劳动教育\n教室").put("d", 0).put("p", 0)
+                .put("q", "1").put("h", 100).put("col", ""),
+        )
+        val here = listOf(
+            Triple("高等数学Ⅰ（上）", 1, "1-2"), Triple("大学英语Ⅰ", 3, "1-2"),
+            Triple("高等数学Ⅰ（上）", 5, "1-2"), Triple("电气工程概论", 1, "3-4"),
+            Triple("思想道德与法治", 2, "3-4"), Triple("高等数学Ⅰ（上）", 3, "3-4"),
+            Triple("大学英语Ⅰ", 4, "3-4"), Triple("机械CAD/CAM-Solidworks", 1, "5-6"),
+            Triple("体育Ⅰ（羽毛球）", 2, "5-6"), Triple("C语言程序设计", 1, "7-8"),
+            Triple("C语言程序设计", 2, "7-8"), Triple("机械CAD/CAM-Solidworks", 5, "7-8"),
+            Triple("职业生涯规划", 1, "9-10"), Triple("军事理论", 2, "9-10"),
+            Triple("思想道德与法治", 3, "9-10"), Triple("军事理论", 4, "9-10"),
+        )
+
+        // 全部课程都在 1..16 内：通过
+        val good = JSONArray()
+        here.forEach { (n, d, j) ->
+            good.put(
+                JSONObject().put("kcmc", n).put("xqj", d.toString()).put("jcs", j)
+                    .put("cdmc", "教室").put("zcd", "1-16周"),
+            )
+        }
+        good.put(
+            JSONObject().put("kcmc", "劳动教育").put("xqj", "1").put("jcs", "1-2")
+                .put("cdmc", "教室").put("zcd", "1-16周"),
+        )
+        val ok = ApiValidator.validate(cells, body16, JSONObject().put("kbList", good).toString())
+        assertNotNull("全部周次都在学期范围内应通过：" + ok.verdict, ok.courses)
+
+        // 劳动教育声称上到第 21 周：本周比对仍然对得上，学期周数校验必须拦下
+        val bad = JSONArray(good.toString())
+        bad.put(
+            JSONObject().put("kcmc", "劳动教育").put("xqj", "1").put("jcs", "1-2")
+                .put("cdmc", "教室").put("zcd", "1-16周,21周"),
+        )
+        val rejected = ApiValidator.validate(cells, body16, JSONObject().put("kbList", bad).toString())
+        assertNull("超出学期周数的接口必须拒绝", rejected.courses)
+        assertTrue(rejected.verdict.contains("学期范围"))
+    }
+}

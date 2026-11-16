@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <!-- 教务旧页面仍使用 HTTP；仅对这个主机开放，不同等信任整个学校域。 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">jw.gzist.edu.cn</domain>
+    </domain-config>
+</network-security-config>

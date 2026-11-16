@@ -1,0 +1,14 @@
+# 统一换行符：仓库里存 LF，Windows 上检出也保持 LF，
+# 否则 CI（Linux）里的 gradlew 会因为 CRLF 报 "bad interpreter"。
+* text=auto eol=lf
+
+# Windows 脚本必须 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.jar binary
+*.keystore binary

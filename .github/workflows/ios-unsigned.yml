@@ -1,0 +1,95 @@
+name: iOS unsigned IPA
+
+# 产物是**未签名** IPA：签名（Sideloadly / AltStore / 自己的证书）由使用者完成。
+# 没有 Mac 也能用：macOS runner 负责编译，你只负责下载和自签。
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-unsigned.yml"
+
+jobs:
+  build:
+    # iOS 只能用 macOS 编译；macos-15 自带 Xcode 16
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # 从 Windows 提交时 gradlew 的可执行位会丢，这里补一下
+      - name: Make gradlew executable
+        working-directory: ios
+        run: chmod +x gradlew
+
+      # 先跑引擎单测：比整包编译快得多，逻辑错在这里就能拦住
+      - name: Run engine unit tests
+        working-directory: ios
+        run: ./gradlew :shared:jvmTest --no-daemon --stacktrace
+
+      - name: Build Compose framework (iosArm64)
+        working-directory: ios
+        run: ./gradlew :composeApp:linkReleaseFrameworkIosArm64 --no-daemon --stacktrace
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios/iosApp
+        run: xcodegen generate
+
+      - name: Build app without code signing
+        working-directory: ios/iosApp
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project GuangXiaoKe.xcodeproj \
+            -scheme GuangXiaoKe \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package unsigned IPA
+        run: |
+          set -e
+          APP="ios/iosApp/build/Build/Products/Release-iphoneos/GuangXiaoKe.app"
+          test -d "$APP" || { echo "没找到 $APP"; exit 1; }
+          rm -rf out && mkdir -p out/Payload
+          cp -R "$APP" out/Payload/
+          cd out && zip -qry GuangXiaoKe-unsigned.ipa Payload
+          ls -lh GuangXiaoKe-unsigned.ipa
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: GuangXiaoKe-unsigned-ipa
+          path: out/GuangXiaoKe-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      # 编译失败时把 Gradle 报告和 Xcode 日志一起带出来
+      - name: Upload build report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-report
+          path: |
+            ios/shared/build/reports/tests/
+            ios/composeApp/build/reports/
+            ios/iosApp/build/Logs/
+          if-no-files-found: ignore
+          retention-days: 7

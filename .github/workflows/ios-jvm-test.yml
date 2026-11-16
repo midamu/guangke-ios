@@ -1,0 +1,50 @@
+name: Engine tests (JVM)
+
+# 引擎单测跑在 ubuntu 上：不占 macOS 分钟数、2~3 分钟出结果。
+# 没有 Mac 的时候，这就是你唯一能在本地改完立刻验证的一环
+# （iOS 的编译只能在 macOS runner 上做）。
+on:
+  push:
+    paths:
+      - "ios/shared/**"
+      - "ios/composeApp/**"
+      - "ios/build.gradle.kts"
+      - "ios/settings.gradle.kts"
+      - "ios/gradle.properties"
+      - ".github/workflows/ios-jvm-test.yml"
+  pull_request:
+    paths:
+      - "ios/**"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # 从 Windows 提交时 gradlew 的可执行位会丢，这里补一下
+      - name: Make gradlew executable
+        working-directory: ios
+        run: chmod +x gradlew
+
+      - name: Run shared unit tests
+        working-directory: ios
+        run: ./gradlew :shared:jvmTest --no-daemon --stacktrace
+
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jvm-test-report
+          path: ios/shared/build/reports/tests/
+          if-no-files-found: ignore

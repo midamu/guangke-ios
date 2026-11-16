@@ -1,0 +1,395 @@
+package com.jianke.schedule.ui
+
+import android.os.Build
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.LocalOverscrollFactory
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.unit.dp
+import com.jianke.schedule.data.CredentialStore
+import com.jianke.schedule.data.Prefs
+import com.jianke.schedule.data.ScheduleStore
+import com.jianke.schedule.data.Wallpaper
+import com.jianke.schedule.net.HeadlessImport
+import com.jianke.schedule.ui.theme.AppTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.NavigationBar
+import top.yukonga.miuix.kmp.basic.NavigationBarDisplayMode
+import top.yukonga.miuix.kmp.basic.NavigationBarItem
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Settings
+import top.yukonga.miuix.kmp.icon.extended.Weeks
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+private val DOCK_RESERVED_HEIGHT = 76.dp // 与 navInset 相加后使用
+
+private val dockItems = listOf(
+    DockItem(MiuixIcons.Weeks, "课表"),
+    DockItem(MiuixIcons.Settings, "设置"),
+    DockItem(AboutCircleIcon, "关于"),
+)
+
+/** 标题栏 / 底栏的表面色：有壁纸时用统一的一层不透明度，不再三处各调一个值。 */
+@Composable
+private fun barSurface(): Color = if (LocalWallpaperActive.current) {
+    MiuixTheme.colorScheme.surface.copy(alpha = Ui.Scrim)
+} else {
+    MiuixTheme.colorScheme.surface
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun AppRoot() {
+    val context = LocalContext.current
+    var tab by remember { mutableIntStateOf(0) }
+    var schedule by remember {
+        mutableStateOf(runCatching { ScheduleStore.load(context) }.getOrNull())
+    }
+    var importing by remember { mutableStateOf(false) }
+    // 无头自动更新：不换界面、不动现有课表，只在结果出来时弹一条提示
+    var autoBusy by remember { mutableStateOf(false) }
+    var autoMsg by remember { mutableStateOf<String?>(null) }
+    var showAccount by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    // 首次打开时弹一次说明，看过就记下来，之后不再打扰
+    var showPrivacy by remember { mutableStateOf(!Prefs.privacyShown(context)) }
+    // 壁纸的缩放/位移：用户自己调好的构图
+    val wpTransform = remember { Prefs.wallpaperOffset(context) }
+    var wpScale by remember { mutableStateOf(Prefs.wallpaperScale(context)) }
+    var wpOffsetX by remember { mutableStateOf(wpTransform.first) }
+    var wpOffsetY by remember { mutableStateOf(wpTransform.second) }
+
+    val override = remember { Prefs.darkOverride(context) }
+    var darkOverride by remember { mutableStateOf(override) }
+
+    var dock by remember { mutableStateOf(Prefs.dockEnabled(context)) }
+    // 悬浮 Dock 自己控制位置：贴着系统导航栏上方 8dp。
+    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    var wallpaperVersion by remember { mutableIntStateOf(0) }
+    var wallpaper by remember { mutableStateOf<Wallpaper.WallpaperArt?>(null) }
+    // 内存优化：壁纸位图约 10MB——进入导入（WebView 很吃内存）和退到后台时释放，
+    // 回前台/导入完成后再解码恢复（后台线程，进来一瞬间是纯色底，随即恢复壁纸）
+    var wallpaperReleased by remember { mutableStateOf(false) }
+    LaunchedEffect(wallpaperVersion) {
+        wallpaper = withContext(Dispatchers.IO) {
+            runCatching { Wallpaper.load(context) }.getOrNull()
+        }
+        wallpaperReleased = false
+    }
+    LaunchedEffect(importing) {
+        if (importing && wallpaper != null) {
+            wallpaper = null
+            wallpaperReleased = true
+        }
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> if (wallpaper != null) {
+                    wallpaper = null
+                    wallpaperReleased = true
+                }
+                Lifecycle.Event.ON_RESUME -> if (wallpaperReleased) {
+                    wallpaperReleased = false
+                    wallpaperVersion++
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    // 液态玻璃开关（设置页可切）：只作用于 Dock 的玻璃质感
+    var glassEnabled by remember { mutableStateOf(Prefs.glassEnabled(context)) }
+    // AGSL 折射需要 Android 13+；miuix-blur 自带降级，这里只负责把开关语义传下去
+    val glassSupported = Build.VERSION.SDK_INT >= 33
+
+    /**
+     * 无头更新：直连 CAS + 教务接口。
+     *
+     * 刻意**不切界面**——原来点「更新课表」会整屏换成 WebView，失败后用户得先
+     * 手动点取消才回到课表，体感就像「更新失败课表没了」。这条路径全程在原界面
+     * 之上弹进度，失败也只是弹一句提示，课表保持原样。
+     */
+    fun runAutoUpdate() {
+        if (autoBusy || importing) return
+        if (!CredentialStore.hasAccount(context)) {
+            showAccount = true
+            return
+        }
+        autoBusy = true
+        scope.launch {
+            val result = runCatching { HeadlessImport.run(context) }
+                .getOrElse { HeadlessImport.Result.Failed(it.message ?: "自动更新失败") }
+            when (result) {
+                is HeadlessImport.Result.Ok -> {
+                    schedule = runCatching { ScheduleStore.load(context) }.getOrNull() ?: result.schedule
+                    autoMsg = "更新成功（" + result.via + "）"
+                }
+                is HeadlessImport.Result.Fallback -> autoMsg =
+                    "自动更新没成功：" + result.reason +
+                        "\n\n可以用「立即更新课表」手动登录一次；现在的课表没有被改动。"
+                is HeadlessImport.Result.Failed -> autoMsg = result.reason
+            }
+            autoBusy = false
+        }
+    }
+
+    if (importing) {
+        AppTheme(darkOverride = darkOverride) {
+            ImportScreen(
+                onCancel = { importing = false },
+                onImported = {
+                    schedule = runCatching { ScheduleStore.load(context) }.getOrNull()
+                    importing = false
+                    tab = 0
+                    // 导入期间壁纸被释放过：重新解码恢复
+                    if (Wallpaper.file(context).exists()) wallpaperVersion++
+                },
+            )
+        }
+        return
+    }
+
+    AppTheme(darkOverride = darkOverride) {
+        // 关闭过度滚动回弹/拉伸：内容一屏放得下的页面拖动时不再上下晃动
+        CompositionLocalProvider(LocalOverscrollFactory provides null) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                // 壁纸底层（有自定义壁纸时铺在最下面）
+                val currentWallpaper = wallpaper
+                if (currentWallpaper != null) {
+                    WallpaperLayer(
+                        art = currentWallpaper,
+                        scale = wpScale,
+                        fracX = wpOffsetX,
+                        fracY = wpOffsetY,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MiuixTheme.colorScheme.surface.copy(alpha = Ui.WallpaperDim)),
+                    )
+                }
+
+                // Dock 毛玻璃采样的内容层：先铺一层表面色保证不透明，再画真实内容
+                val backdropSurface = MiuixTheme.colorScheme.surface
+                val backdrop = rememberLayerBackdrop {
+                    drawRect(backdropSurface)
+                    drawContent()
+                }
+
+                CompositionLocalProvider(LocalWallpaperActive provides (currentWallpaper != null)) {
+                    top.yukonga.miuix.kmp.basic.Scaffold(
+                        topBar = {
+                            // 顶栏背景钉住不参与过渡，标题/副标题随页面做同一套
+                            // 「先淡出再淡入」：两根透明底的 Miuix 顶栏在 AnimatedContent
+                            // 里交叉淡化，渲染仍是原组件（样式像素级一致）。
+                            // 副标题槽位用空格占位（而非空串）让三页顶栏高度一致，
+                            // 切页时内容不再因顶栏变高变矮而上下跳。
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(barSurface()),
+                            ) {
+                                AnimatedContent(
+                                    targetState = tab,
+                                    transitionSpec = {
+                                        // 标题与页面不同：新旧文字叠在同一位置，交叉淡化会
+                                        // 糊成一团（1x 下 ~90ms 的重影读起来就是「瞬间切换」）。
+                                        // 这里完全错开——旧字 140ms 退干净，新字再 240ms 淡入，
+                                        // 中间留一拍空档，效果清晰可辨且节奏仍是先收后放。
+                                        fadeIn(
+                                            tween(240, delayMillis = 140, easing = LinearOutSlowInEasing),
+                                        ).togetherWith(
+                                            fadeOut(tween(140, easing = FastOutLinearInEasing)),
+                                        )
+                                    },
+                                    label = "topBar",
+                                ) { t ->
+                                    SmallTopAppBar(
+                                        title = when (t) {
+                                            0 -> "广小课"
+                                            1 -> "设置"
+                                            else -> "关于"
+                                        },
+                                        // 「广小课」下面这行小字
+                                        subtitle = if (t == 0) "天天开心" else " ",
+                                        color = Color.Transparent,
+                                    )
+                                }
+                            }
+                        },
+                        bottomBar = {
+                            if (!dock) {
+                                NavigationBar(
+                                    mode = NavigationBarDisplayMode.IconOnly,
+                                    color = barSurface(),
+                                ) {
+                                    NavigationBarItem(
+                                        selected = tab == 0,
+                                        onClick = { tab = 0 },
+                                        icon = MiuixIcons.Weeks,
+                                        label = "课表",
+                                    )
+                                    NavigationBarItem(
+                                        selected = tab == 1,
+                                        onClick = { tab = 1 },
+                                        icon = MiuixIcons.Settings,
+                                        label = "设置",
+                                    )
+                                    NavigationBarItem(
+                                        selected = tab == 2,
+                                        onClick = { tab = 2 },
+                                        icon = AboutCircleIcon,
+                                        label = "关于",
+                                    )
+                                }
+                            }
+                        },
+                        containerColor = if (currentWallpaper != null) Color.Transparent
+                        else MiuixTheme.colorScheme.surface,
+                    ) { padding ->
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            // 内容打上 backdrop 标记：Dock 的毛玻璃采样这里
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .then(
+                                        if (dock && glassEnabled && glassSupported) {
+                                            Modifier.layerBackdrop(backdrop)
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
+                            ) {
+                                // 页面固定住：切页走统一过渡 screenTransition（先淡出再淡入 + 上移），
+                                // 与课表页三个模块的切换保持同一节奏，不再上下滑动。
+                                AnimatedContent(
+                                    targetState = tab,
+                                    transitionSpec = { screenTransition() },
+                                    label = "tab",
+                                ) { target ->
+                                    // 各屏幕自己让开顶栏 / 底栏（只让一次）
+                                    val contentPadding = PaddingValues(
+                                        top = padding.calculateTopPadding(),
+                                        bottom = padding.calculateBottomPadding() +
+                                            (if (dock) DOCK_RESERVED_HEIGHT else 0.dp),
+                                    )
+                                    when (target) {
+                                        0 -> HomeScreen(
+                                            schedule = schedule,
+                                            contentPadding = contentPadding,
+                                            onImport = { importing = true },
+                                            onAutoUpdate = { runAutoUpdate() },
+                                        )
+
+                                        1 -> SettingsScreen(
+                                            contentPadding = contentPadding,
+                                            darkOverride = darkOverride,
+                                            onDarkOverrideChange = { v ->
+                                                darkOverride = v
+                                                Prefs.setDarkOverride(context, v)
+                                            },
+                                            dock = dock,
+                                            onDockChange = { v ->
+                                                dock = v
+                                                Prefs.setDockEnabled(context, v)
+                                            },
+                                            glass = glassEnabled,
+                                            onGlassChange = { v ->
+                                                glassEnabled = v
+                                                Prefs.setGlassEnabled(context, v)
+                                            },
+                                            hasWallpaper = currentWallpaper != null,
+                                            onWallpaperChanged = { wallpaperVersion++ },
+                                            onWallpaperTransform = { s, dx, dy ->
+                                                wpScale = s
+                                                wpOffsetX = dx
+                                                wpOffsetY = dy
+                                                Prefs.setWallpaperTransform(context, s, dx, dy)
+                                            },
+                                        )
+
+                                        else -> AboutScreen(contentPadding)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Dock 必须是采样层的兄弟节点（不能放进 layerBackdrop 标记的节点里），
+                // 否则玻璃采样包含自身的图层会自引用，RenderThread 直接段错误崩溃
+                if (dock) {
+                    GxDock(
+                        items = dockItems,
+                        selectedIndex = tab,
+                        onSelect = { tab = it },
+                        backdrop = backdrop,
+                        glassOn = glassEnabled && glassSupported,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(
+                                bottom = if (navInset > 0.dp) 8.dp + navInset else 28.dp,
+                            ),
+                    )
+                }
+
+                // 首次打开时的说明弹窗（只弹一次）
+                if (showPrivacy) {
+                    PrivacyDialog(onDismiss = {
+                        Prefs.setPrivacyShown(context, true)
+                        showPrivacy = false
+                    })
+                }
+
+                // 无头更新的进度 / 结果：不换界面，课表始终留在屏幕上
+                if (autoBusy || autoMsg != null) {
+                    AutoUpdateDialog(
+                        text = if (autoBusy) "正在自动更新课表…" else autoMsg.orEmpty(),
+                        onDismiss = { if (!autoBusy) autoMsg = null },
+                    )
+                }
+                if (showAccount) {
+                    AccountDialog(onDismiss = { showAccount = false })
+                }
+            }
+        }
+    }
+}
