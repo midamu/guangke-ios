@@ -42,3 +42,16 @@ val schoolLessonTimes: Map<Int, Pair<String, String>> = mapOf(
 val schoolPeriodTimes: List<PeriodTime> = schoolLessonTimes.entries
     .sortedBy { it.key }
     .map { PeriodTime(it.key, it.value.first, it.value.second) }
+
+/**
+ * 课程在界面上该显示的**时间区间**。
+ *
+ * 用「大节」的起止，而不是「首节开始 → 末节结束」：
+ * 1-2 节应该是 `08:20-10:00`（整个大节），不是 `08:20-09:55`（第 2 小节的结束）。
+ * 学校作息里两个小节之间还有 5 分钟课间，用大节区间的口径和课表页一致。
+ */
+fun courseTimeRange(startPeriod: Int, endPeriod: Int): Pair<String, String> {
+    val first = schoolBigPeriods.getOrNull(rowIndexOf(startPeriod))
+    val last = schoolBigPeriods.getOrNull(rowIndexOf(endPeriod))
+    return (first?.startTime ?: "") to (last?.endTime ?: "")
+}

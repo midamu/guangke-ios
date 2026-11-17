@@ -66,7 +66,7 @@ class FixedTabsFlowTest {
             compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
         }
         // Gradle uninstalls the test app after execution; keep review artifacts outside its data.
-        val command = "cp ${file.absolutePath} /data/local/tmp/guangxiaoke-$name.png"
+        val command = "cp ${file.absolutePath} /data/local/tmp/lixiaoguang-$name.png"
         val result = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
         ParcelFileDescriptor.AutoCloseInputStream(result).use { it.readBytes() }
     }

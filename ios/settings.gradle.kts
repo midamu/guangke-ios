@@ -13,7 +13,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "guangxiaoke-ios"
+rootProject.name = "lixiaoguang-ios"
 
 include(":shared")
 include(":composeApp")

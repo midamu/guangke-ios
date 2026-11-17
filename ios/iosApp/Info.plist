@@ -5,7 +5,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleDisplayName</key>
-    <string>广小课</string>
+    <string>理小广</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -24,6 +24,11 @@
     <true/>
     <key>UILaunchScreen</key>
     <dict/>
+
+    <!-- 选背景图会用到系统相册选择器；PHPicker 本身不需要授权，
+         但补上说明可以避免部分系统版本/审核上的问题 -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>选择一张照片作为课表背景，图片只保存在本机。</string>
 
     <!--
       Compose Multiplatform 启动约 0.5 秒后会在后台队列检查这个键，

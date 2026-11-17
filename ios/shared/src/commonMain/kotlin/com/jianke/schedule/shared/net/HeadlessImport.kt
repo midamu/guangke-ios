@@ -62,7 +62,11 @@ class HeadlessImport(
                 var lastCode = ""
                 for (i in 1..MAX_CAPTCHA_TRIES) {
                     val captcha = cas.fetchCaptcha() ?: return Result.Fallback("取验证码失败")
-                    answer = s.solve(captcha.png) ?: return Result.Fallback("验证码没识别出来")
+                    when (val solved = s.solve(captcha.png)) {
+                        is SolveResult.Ok -> answer = solved.answer
+                        // 打码平台的原话直接给用户：错密码、没余额、题型变了，一看就知道
+                        is SolveResult.Failed -> return Result.Fallback(solved.reason)
+                    }
                     val r = cas.login(account.first, account.second, captcha, answer)
                     if (r is CasClient.LoginResult.Ok) {
                         result = r
@@ -91,7 +95,8 @@ class HeadlessImport(
         val sessionOk = runCatching { cas.openJwSession(ticket) }
             .getOrElse { return Result.Fallback("教务会话请求失败：${it.message}") }
         if (!sessionOk) return Result.Fallback("教务会话建立失败")
-        jw.warmUp()
+        // 课表页的 HTML 里带「第N周 起止日期」表头，是推算学期起点和当前周次的唯一来源
+        val pageText = jw.warmUp()
 
         val (xnm, xqm) = JwClient.academicTerm(todayYear, todayMonth)
         val raw = jw.fetchKbList(xnm, xqm)
@@ -107,7 +112,7 @@ class HeadlessImport(
         }
 
         // ⑤ 无头模式没有页面表头：学期起始日期沿用上一份课表，避免日期整体错位
-        val built = ScheduleBuilder.build("", sane, todayIso = todayIso, updatedAt = nowMillis())
+        val built = ScheduleBuilder.build(pageText, sane, todayIso = todayIso, updatedAt = nowMillis())
         val old = runCatching { repo.load() }.getOrNull()
         val fixed = if (built.semester.startDate.isBlank() && old != null) {
             built.copy(semester = built.semester.copy(startDate = old.semester.startDate))

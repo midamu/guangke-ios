@@ -47,7 +47,7 @@ UI 测试需要已启动的 Android 模拟器或测试设备；本次使用 Andr
 6. 完整设置页的系统、浅色、深色切换，栏位位置不变。
 
 完整页面测试使用本机写入的虚构课程数据，不登录学校系统、不调用学校接口。
-页面截图保存在模拟器 `/data/local/tmp/guangxiaoke-*.png`，可使用 `adb pull` 导出。
+页面截图保存在模拟器 `/data/local/tmp/lixiaoguang-*.png`，可使用 `adb pull` 导出。
 
 测试框架在本机 Android 37 模拟器上因 Espresso 的 `InputManager.getInstance` 兼容问题未能执行断言；这不计为控件复现或验证结果。
 本次模拟器结果不能替代用户视频对应手机上的真机验收。

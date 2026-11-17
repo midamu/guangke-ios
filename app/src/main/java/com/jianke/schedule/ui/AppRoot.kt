@@ -244,11 +244,11 @@ fun AppRoot() {
                                 ) { t ->
                                     SmallTopAppBar(
                                         title = when (t) {
-                                            0 -> "广小课"
+                                            0 -> "理小广"
                                             1 -> "设置"
                                             else -> "关于"
                                         },
-                                        // 「广小课」下面这行小字
+                                        // 「理小广」下面这行小字
                                         subtitle = if (t == 0) "天天开心" else " ",
                                         color = Color.Transparent,
                                     )

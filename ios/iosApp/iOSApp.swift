@@ -107,18 +107,32 @@ final class WallpaperHostImpl: NSObject, SharedWallpaperHost {
     }
 
     func pick(onDone: @escaping (String?) -> Void) {
-        guard let presenter else {
-            onDone(nil)
-            return
-        }
-        var config = PHPickerConfiguration(photoLibrary: .shared())
+        // 用默认配置（不传 photoLibrary:）：PHPicker 本身是独立进程，不需要相册权限；
+        // 一旦传了 `photoLibrary: .shared()`，缺 NSPhotoLibraryUsageDescription 时会被系统拦掉。
+        var config = PHPickerConfiguration()
         config.filter = .images
         config.selectionLimit = 1
 
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = self
         self.onDone = onDone
-        presenter.present(picker, animated: true)
+
+        // 依次尝试：自己的 presenter → 窗口的根 VC → 已呈现的 VC
+        let host = presenter
+            ?? presenter?.view.window?.rootViewController
+            ?? UIApplication.shared.connectedScenes
+                .compactMap { ($0 as? UIWindowScene)?.keyWindow?.rootViewController }
+                .first
+
+        guard let host else {
+            NSLog("WallpaperHost: no view controller to present from")
+            onDone(nil)
+            return
+        }
+        let target = host.presentedViewController ?? host
+        target.present(picker, animated: true) {
+            NSLog("WallpaperHost: picker presented")
+        }
     }
 }
 
@@ -200,7 +214,7 @@ final class RootViewController: UIViewController {
 // MARK: - SwiftUI 入口
 
 @main
-struct GuangXiaoKeApp: App {
+struct LiXiaoGuangApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()

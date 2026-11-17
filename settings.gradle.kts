@@ -25,5 +25,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "GuangXiaoKe"
+rootProject.name = "LiXiaoGuang"
 include(":app")

@@ -142,7 +142,7 @@ private fun AppInfoCard() {
             }
             Spacer(Modifier.width(14.dp))
             Column {
-                Text(text = "广小课", style = MiuixTheme.textStyles.title3)
+                Text(text = "理小广", style = MiuixTheme.textStyles.title3)
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = "版本 " + BuildConfig.VERSION_NAME,

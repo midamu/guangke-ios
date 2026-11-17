@@ -80,8 +80,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild \
-            -project GuangXiaoKe.xcodeproj \
-            -scheme GuangXiaoKe \
+            -project LiXiaoGuang.xcodeproj \
+            -scheme LiXiaoGuang \
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
@@ -94,18 +94,18 @@ jobs:
       - name: Package unsigned IPA
         run: |
           set -e
-          APP="ios/iosApp/build/Build/Products/Release-iphoneos/GuangXiaoKe.app"
+          APP="ios/iosApp/build/Build/Products/Release-iphoneos/LiXiaoGuang.app"
           test -d "$APP" || { echo "没找到 $APP"; exit 1; }
           rm -rf out && mkdir -p out/Payload
           cp -R "$APP" out/Payload/
-          cd out && zip -qry GuangXiaoKe-unsigned.ipa Payload
-          ls -lh GuangXiaoKe-unsigned.ipa
+          cd out && zip -qry LiXiaoGuang-unsigned.ipa Payload
+          ls -lh LiXiaoGuang-unsigned.ipa
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: GuangXiaoKe-unsigned-ipa-${{ matrix.runner }}
-          path: out/GuangXiaoKe-unsigned.ipa
+          name: LiXiaoGuang-unsigned-ipa-${{ matrix.runner }}
+          path: out/LiXiaoGuang-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
 

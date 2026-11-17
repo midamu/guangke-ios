@@ -63,6 +63,9 @@ object Type {
     val body = TextStyle(fontSize = 15.sp, lineHeight = 20.sp)
     val caption = TextStyle(fontSize = 13.sp, lineHeight = 18.sp)
     val tiny = TextStyle(fontSize = 11.sp, lineHeight = 14.sp)
+
+    /** 课表左侧的时间字样：格子宽度有限，只能更小 */
+    val micro = TextStyle(fontSize = 9.sp, lineHeight = 11.sp)
 }
 
 @Composable

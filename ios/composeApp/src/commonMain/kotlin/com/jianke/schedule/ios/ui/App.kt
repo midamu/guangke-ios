@@ -33,6 +33,7 @@ import com.jianke.schedule.shared.platform.todayIso
 import com.jianke.schedule.shared.storage.CredentialVault
 import com.jianke.schedule.shared.storage.Credentials
 import com.jianke.schedule.shared.storage.ScheduleRepository
+import com.jianke.schedule.shared.storage.UiPrefs
 import com.jianke.schedule.shared.util.IsoDate
 import kotlinx.coroutines.launch
 
@@ -54,6 +55,10 @@ fun App(vault: CredentialVault, wallpaper: WallpaperHost) {
     GxkTheme(wallpaperActive = wallpaperActive) {
         val palette = LocalPalette.current
         val credentials = remember { Credentials(vault) }
+        // 首页标题/副标题可在设置里改，存在同一个 vault 里
+        val uiPrefs = remember { UiPrefs(vault) }
+        var appTitle by remember { mutableStateOf(uiPrefs.title()) }
+        var appSubtitle by remember { mutableStateOf(uiPrefs.subtitle()) }
         val repo = remember { ScheduleRepository() }
         val http = remember { Http(newHttpClient()) }
         val scope = rememberCoroutineScope()
@@ -93,7 +98,7 @@ fun App(vault: CredentialVault, wallpaper: WallpaperHost) {
                 .fillMaxSize()
                 .background(if (wallpaperActive) Color.Transparent else palette.background),
         ) {
-            TopBar(busy = busy)
+            TopBar(title = appTitle, subtitle = appSubtitle, busy = busy)
             Box(modifier = Modifier.weight(1f)) {
                 val current = schedule
                 when {
@@ -107,6 +112,13 @@ fun App(vault: CredentialVault, wallpaper: WallpaperHost) {
                         wallpaper = wallpaper,
                         wallpaperActive = wallpaperActive,
                         onWallpaperActiveChanged = { wallpaperActive = it },
+                        appTitle = appTitle,
+                        appSubtitle = appSubtitle,
+                        onAppearanceSaved = { t, s ->
+                            uiPrefs.save(t, s)
+                            appTitle = uiPrefs.title()
+                            appSubtitle = uiPrefs.subtitle()
+                        },
                         onUpdate = { update() },
                     )
                 }
@@ -121,7 +133,7 @@ fun App(vault: CredentialVault, wallpaper: WallpaperHost) {
 }
 
 @Composable
-private fun TopBar(busy: Boolean) {
+private fun TopBar(title: String, subtitle: String, busy: Boolean) {
     val palette = LocalPalette.current
     val surface = if (LocalWallpaperActive.current) palette.surface.copy(alpha = 0.9f) else palette.surface
     Column(
@@ -130,9 +142,9 @@ private fun TopBar(busy: Boolean) {
             .background(surface)
             .padding(horizontal = 20.dp, vertical = 14.dp),
     ) {
-        Text(text = "广小课", style = Type.title)
+        Text(text = title, style = Type.title)
         Text(
-            text = if (busy) "正在更新课表…" else "天天开心",
+            text = if (busy) "正在更新课表…" else subtitle,
             style = Type.caption,
             color = palette.subText,
         )

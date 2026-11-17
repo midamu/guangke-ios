@@ -147,7 +147,9 @@ fun Field(
                 .padding(top = 4.dp)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(ROW_CORNER))
-                .background(palette.divider.copy(alpha = 0.6f))
+                // 输入框底色跟随页面背景（原来是偏灰的 divider 色，显得脏）
+                .background(palette.background)
+                .border(1.dp, palette.divider.copy(alpha = 0.6f), RoundedCornerShape(ROW_CORNER))
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
             if (value.isEmpty() && placeholder.isNotEmpty()) {

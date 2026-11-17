@@ -1,4 +1,4 @@
-# 广小课 iOS 版：可行性与迁移方案
+# 理小广 iOS 版：可行性与迁移方案
 
 > 结论：**能做，但没有「一键把 Android 工程转成 iOS」的现成工作流。**
 > 好消息是我核实了一件事——这套 UI 的底层库**官方就支持 iOS**，所以不用重写成 SwiftUI，
@@ -182,7 +182,7 @@ Keychain 项在 App 卸载后仍然存在（这是特性不是 bug）。「清�
 **现在就能验证**（不需要 Mac、不需要 Xcode，Windows 即可）：
 
 ```bash
-cd E:\Code\guangxiaoke\ios
+cd E:\Code\lixiaoguang\ios
 ./gradlew :shared:jvmTest        # Windows 用 gradlew.bat
 ```
 
@@ -241,6 +241,24 @@ cd E:\Code\guangxiaoke\ios
 | `ios/project.yml` | XcodeGen 工程（静态 framework 不 embed） |
 | `.github/workflows/ios-unsigned.yml` | macOS runner：gradle 出 framework → xcodegen → `xcodebuild` 关签名 → 未签名 IPA |
 
+### 本地 UI 预览（Windows，不需要 Mac）
+
+`composeApp` 有一个 `jvm("desktop")` 目标，**只用于界面预览**，不进 iOS 包。
+同一份 `commonMain` 界面代码直接跑在 Windows 上：
+
+```powershell
+cd E:\Code\lixiaoguang\ios
+$env:JAVA_HOME='E:\Apps\jdk17'
+gradlew.bat :composeApp:run
+```
+
+- 窗口按 iPhone 竖屏比例（390×844）打开
+- 改 `commonMain` 里任何界面代码，重新 run 一次约 **3 秒**（有缓存后）
+- 平台能力用替身：账号存进程内存、壁纸 `pick` 直接回 null
+
+> 为什么不靠 iOS 模拟器：VM 里的 macOS 没有 Metal，模拟器起不来/极慢。
+> 桌面预览 + 真机验证是这套组合里最快的循环。
+
 ### 怎么编（没有 Mac 也能走完）
 
 iOS 的编译只能在 macOS 上做，但**你不用有 Mac**——GitHub Actions 的 `macos-15` runner 就是一台云 Mac。
@@ -258,7 +276,7 @@ push 后 `Engine tests (JVM)` 会自动跑 `:shared:jvmTest`。
 **③ 出包（15~25 分钟）**
 
 Actions → 左侧 `iOS unsigned IPA` → `Run workflow`。
-成功后 Artifacts 里下载 `GuangXiaoKe-unsigned-ipa`，解压得到 `GuangXiaoKe-unsigned.ipa`。
+成功后 Artifacts 里下载 `LiXiaoGuang-unsigned-ipa`，解压得到 `LiXiaoGuang-unsigned.ipa`。
 
 **④ 在 Windows 上签名**
 
@@ -289,7 +307,7 @@ cd ios
 ./gradlew :shared:jvmTest
 ./gradlew :composeApp:linkReleaseFrameworkIosArm64
 cd iosApp && xcodegen generate
-open GuangXiaoKe.xcodeproj
+open LiXiaoGuang.xcodeproj
 ```
 
 ### 壁纸：用 UIKit 画在 Compose 下面（已实现）

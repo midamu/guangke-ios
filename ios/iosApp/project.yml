@@ -2,7 +2,7 @@
 # 本文件必须和 iosApp 的源码放在同一目录（workflow 在 ios/iosApp 里执行 xcodegen）。
 #
 # 路径基准：SRCROOT = ios/iosApp，所以 framework 在 ../composeApp/build/bin/...
-name: GuangXiaoKe
+name: LiXiaoGuang
 
 options:
   bundleIdPrefix: com.jianke.schedule
@@ -17,7 +17,7 @@ settings:
     SWIFT_VERSION: "5.0"
 
 targets:
-  GuangXiaoKe:
+  LiXiaoGuang:
     type: application
     platform: iOS
     sources:
@@ -29,6 +29,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jianke.schedule.ios
         INFOPLIST_FILE: Info.plist
+        # 图标来自 Assets.xcassets/AppIcon.appiconset（1024×1024 单尺寸，Xcode 自动生成其余规格）
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # SRCROOT = ios/iosApp → ../composeApp 就是 ios/composeApp
         FRAMEWORK_SEARCH_PATHS:
           - "$(SRCROOT)/../composeApp/build/bin/iosArm64/releaseFramework"

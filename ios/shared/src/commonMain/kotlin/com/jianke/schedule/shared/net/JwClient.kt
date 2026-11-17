@@ -33,10 +33,14 @@ class JwClient(private val http: Http) {
         }
     }
 
-    /** 先打开课表页：个别学期要页面初始化才会把 Cookie 写齐。 */
-    suspend fun warmUp() {
-        runCatching { http.get(TABLE_PAGE) }
-    }
+    /**
+     * 先打开课表页：个别学期要页面初始化才会把 Cookie 写齐。
+     *
+     * **顺便把页面正文带回去**——里面就有「第N周 起止日期」的表头，
+     * 是推算学期起始日和当前周次的唯一可靠来源（无头模式没有渲染页面，但 HTML 有）。
+     */
+    suspend fun warmUp(): String =
+        runCatching { http.get(TABLE_PAGE).body }.getOrDefault("")
 
     /** @return 接口原始 JSON；候选全失败返回 null */
     suspend fun fetchKbList(xnm: String, xqm: String): String? {

@@ -21,7 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jianke.schedule.shared.model.Schedule
-import com.jianke.schedule.shared.model.schoolLessonTimes
+import com.jianke.schedule.shared.model.courseTimeRange
 import com.jianke.schedule.shared.parse.ScheduleWeek
 import com.jianke.schedule.shared.platform.nowHHmm
 import com.jianke.schedule.shared.platform.todayIso
@@ -68,9 +68,8 @@ fun TodayScreen(schedule: Schedule) {
         }
 
         courses.forEach { c ->
-            val times = schoolLessonTimes[c.startPeriod]
-            val start = times?.first.orEmpty()
-            val end = schoolLessonTimes[c.endPeriod]?.second ?: times?.second.orEmpty()
+            // 用大节口径：1-2 节 = 08:20-10:00（不是 08:20-09:55）
+            val (start, end) = courseTimeRange(c.startPeriod, c.endPeriod)
             val state = when {
                 now >= end -> "已结束"
                 now >= start -> "进行中"

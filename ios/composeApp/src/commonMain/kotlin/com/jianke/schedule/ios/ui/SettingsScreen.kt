@@ -11,13 +11,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.jianke.schedule.shared.model.Schedule
+import com.jianke.schedule.shared.net.Http
+import com.jianke.schedule.shared.net.SolveResult
+import com.jianke.schedule.shared.net.TtshituSolver
+import com.jianke.schedule.shared.net.newHttpClient
 import com.jianke.schedule.shared.platform.WallpaperHost
 import com.jianke.schedule.shared.platform.nowMillis
 import com.jianke.schedule.shared.storage.Credentials
+import kotlinx.coroutines.launch
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * 设置页：账号、打码平台、外观、更新入口。
@@ -34,9 +42,13 @@ fun SettingsScreen(
     wallpaper: WallpaperHost,
     wallpaperActive: Boolean,
     onWallpaperActiveChanged: (Boolean) -> Unit,
+    appTitle: String,
+    appSubtitle: String,
+    onAppearanceSaved: (String, String) -> Unit,
     onUpdate: () -> Unit,
 ) {
     val palette = LocalPalette.current
+    val scope = rememberCoroutineScope()
     val saved = remember { credentials.account() }
     val savedSolver = remember { credentials.solver() }
 
@@ -48,6 +60,10 @@ fun SettingsScreen(
     // 保存结果：直接显示在按钮下方 + 按钮文字里，不用滚动就能看到
     var accountStatus by remember { mutableStateOf(if (saved != null) "已保存（学号 ${mask(saved.first)}）" else "尚未保存") }
     var solverStatus by remember { mutableStateOf(if (savedSolver != null) "已保存（${savedSolver.first}）" else "未配置（可留空）") }
+    var wallpaperStatus by remember { mutableStateOf(if (wallpaperActive) "已开启自定义背景" else "未设置") }
+    var titleDraft by remember { mutableStateOf(appTitle) }
+    var subtitleDraft by remember { mutableStateOf(appSubtitle) }
+    var titleStatus by remember { mutableStateOf("当前：$appTitle / $appSubtitle") }
 
     Column(
         modifier = Modifier
@@ -132,6 +148,54 @@ fun SettingsScreen(
             )
             Spacer(Modifier.height(6.dp))
             Text(text = solverStatus, style = Type.caption, color = palette.primary)
+            Spacer(Modifier.height(8.dp))
+            GhostButton(
+                text = "测试打码账号",
+                onClick = {
+                    solverStatus = "正在测试…"
+                    scope.launch {
+                        // 拿一张 1×1 的图去调平台：账号密码错的话它会明说，
+                        // 账号没问题则会给别的结果（图片太小 / 识别不出），据此区分。
+                        val http = Http(newHttpClient())
+                        val r = TshituProbe.test(http, solverUser, solverPass)
+                        solverStatus = r
+                        http.close()
+                    }
+                },
+            )
+        }
+
+        SectionTitle("首页标题")
+        Card {
+            Text(
+                text = "首页顶部那两行字。留空则恢复默认（理小广 / 天天开心）。",
+                style = Type.caption,
+                color = palette.subText,
+            )
+            Spacer(Modifier.height(12.dp))
+            Field(label = "标题", value = titleDraft, placeholder = "理小广") { titleDraft = it }
+            Spacer(Modifier.height(10.dp))
+            Field(label = "副标题", value = subtitleDraft, placeholder = "天天开心") { subtitleDraft = it }
+            Spacer(Modifier.height(14.dp))
+            PrimaryButton(
+                text = "保存标题",
+                onClick = {
+                    onAppearanceSaved(titleDraft, subtitleDraft)
+                    titleStatus = "已保存"
+                },
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(text = titleStatus, style = Type.caption, color = palette.primary)
+            Spacer(Modifier.height(8.dp))
+            GhostButton(
+                text = "恢复默认标题",
+                onClick = {
+                    titleDraft = ""
+                    subtitleDraft = ""
+                    onAppearanceSaved("", "")
+                    titleStatus = "已恢复默认"
+                },
+            )
         }
 
         SectionTitle("外观")
@@ -145,11 +209,21 @@ fun SettingsScreen(
             PrimaryButton(
                 text = if (wallpaperActive) "更换背景" else "选择背景",
                 onClick = {
+                    // 真正的选图在 Swift 侧：PHPicker 需要一个真实的 UIViewController
+                    wallpaperStatus = "正在打开相册…"
                     wallpaper.pick { name ->
-                        if (name != null) onWallpaperActiveChanged(true)
+                        if (name != null) {
+                            wallpaperStatus = "已应用"
+                            onWallpaperActiveChanged(true)
+                        } else {
+                            // 取消、或者系统把相册选择器拦掉了——至少让用户知道点到了
+                            wallpaperStatus = "没选到图片（取消，或相册权限被拦）"
+                        }
                     }
                 },
             )
+            Spacer(Modifier.height(6.dp))
+            Text(text = wallpaperStatus, style = Type.caption, color = palette.primary)
             if (wallpaperActive) {
                 Spacer(Modifier.height(8.dp))
                 GhostButton(
@@ -187,6 +261,28 @@ fun SettingsScreen(
 
 private fun mask(id: String): String =
     if (id.length <= 4) id else id.substring(0, 4) + "****" + id.takeLast(2)
+
+/**
+ * 「测试打码账号」用的探针。
+ *
+ * 拿一张 1×1 的图去调平台：**账号密码错的话平台会明说**（"用户名或密码错误"），
+ * 账号没问题时它会给别的话（图片太小/识别不出），据此就能区分是「账号错」还是「题目变难」。
+ */
+private object TshituProbe {
+
+    @OptIn(ExperimentalEncodingApi::class)
+    private val demoPng: ByteArray = Base64.decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    )
+
+    suspend fun test(http: Http, user: String, pass: String): String {
+        if (user.isBlank() || pass.isBlank()) return "先填图鉴用户名和密码"
+        return when (val r = TtshituSolver(user, pass, http).solve(demoPng)) {
+            is SolveResult.Ok -> "账号可用（平台返回 «${r.answer}»）"
+            is SolveResult.Failed -> r.reason
+        }
+    }
+}
 
 private fun lastUpdateText(schedule: Schedule?): String {
     val updatedAt = schedule?.updatedAt ?: 0L

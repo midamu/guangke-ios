@@ -1,4 +1,4 @@
-# 广小课
+# 理小广
 
 广州理工学院（GZIST）学生用的原生 Android 课表 App。
 登录学校统一身份认证后自动导入整学期课表，1~2 秒完成。
@@ -47,9 +47,9 @@
 正式版签名读取根目录的 `keystore.properties`（该文件与 keystore 均**未提交**）：
 
 ```properties
-storeFile=keystore/guangxiaoke.jks
+storeFile=keystore/lixiaoguang.jks
 storePassword=你的密码
-keyAlias=guangxiaoke
+keyAlias=lixiaoguang
 keyPassword=你的密码
 ```
 
