@@ -1,0 +1,76 @@
+# Codemagic 流水线：GitHub Actions 的 macOS 池子排不上时的备用方案。
+#
+# 用法（需要你操作三步，约 2 分钟）：
+#   1. 用 GitHub 登录 https://codemagic.io
+#   2. Add application → 选 midamu/lixiaoguang-ios
+#   3. 它会自动发现本文件并列出 `ios-unsigned` 工作流 → 点 Start new build
+#
+# 免费额度：500 分钟/月（macOS），一次构建约 12~20 分钟，够出二十几次包。
+# 产物同样是**未签名 IPA**，下载后照常用 Sideloadly 自签。
+
+workflows:
+  ios-unsigned:
+    name: iOS unsigned IPA
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      java: 17
+      xcode: latest
+      cocoapods: default
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+
+    scripts:
+      - name: Make gradlew executable
+        script: chmod +x ios/gradlew
+
+      - name: Engine unit tests
+        script: |
+          cd ios
+          ./gradlew :shared:jvmTest --no-daemon
+
+      - name: Build Compose framework
+        script: |
+          cd ios
+          ./gradlew :composeApp:linkReleaseFrameworkIosArm64 --no-daemon
+
+      - name: Install XcodeGen
+        script: brew install xcodegen
+
+      - name: Generate Xcode project
+        script: |
+          cd ios/iosApp
+          xcodegen generate
+
+      - name: Build app without signing
+        script: |
+          cd ios/iosApp
+          xcodebuild \
+            -project LiXiaoGuang.xcodeproj \
+            -scheme LiXiaoGuang \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package unsigned IPA
+        script: |
+          set -e
+          APP="ios/iosApp/build/Build/Products/Release-iphoneos/LiXiaoGuang.app"
+          test -d "$APP"
+          rm -rf out && mkdir -p out/Payload
+          cp -R "$APP" out/Payload/
+          cd out && zip -qry LiXiaoGuang-unsigned.ipa Payload
+          ls -lh LiXiaoGuang-unsigned.ipa
+
+    artifacts:
+      - out/LiXiaoGuang-unsigned.ipa
