@@ -63,7 +63,9 @@ fun App(vault: CredentialVault, wallpaper: WallpaperHost) {
     var wallpaperVersion by remember { mutableIntStateOf(0) }
     var wallpaperBmp by remember { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(wallpaperVersion) {
-        wallpaperBmp = withContext(Dispatchers.IO) {
+        // 注意：Dispatchers.IO 是 JVM 专有的，Kotlin/Native 上没有（编译会报
+        // "it is internal in Dispatchers"）。解码图片本来也是 CPU 活，用 Default。
+        wallpaperBmp = withContext(Dispatchers.Default) {
             WallpaperStore.readBytes()?.let { bytes ->
                 runCatching { Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
             }
