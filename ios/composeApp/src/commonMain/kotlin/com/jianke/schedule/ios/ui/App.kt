@@ -1,5 +1,6 @@
 package com.jianke.schedule.ios.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.jianke.schedule.shared.model.Schedule
@@ -34,8 +39,12 @@ import com.jianke.schedule.shared.storage.CredentialVault
 import com.jianke.schedule.shared.storage.Credentials
 import com.jianke.schedule.shared.storage.ScheduleRepository
 import com.jianke.schedule.shared.storage.UiPrefs
+import com.jianke.schedule.shared.storage.WallpaperStore
 import com.jianke.schedule.shared.util.IsoDate
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.jetbrains.skia.Image
 
 private const val TAB_WEEK = 0
 private const val TAB_TODAY = 1
@@ -49,8 +58,18 @@ private const val TAB_SETTINGS = 2
  */
 @Composable
 fun App(vault: CredentialVault, wallpaper: WallpaperHost) {
-    // 壁纸本身由 Swift 那侧的 UIImageView 画在最底下，Compose 只负责把背景让出来
-    var wallpaperActive by remember { mutableStateOf(wallpaper.isActive()) }
+    // 壁纸由 Compose 自己画（读 Documents/wallpaper.jpg → skiko 解码）。
+    // 不再靠 UIKit 的 UIImageView 垫在下面：Compose 宿主视图不透明，那样画不出来。
+    var wallpaperVersion by remember { mutableIntStateOf(0) }
+    var wallpaperBmp by remember { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(wallpaperVersion) {
+        wallpaperBmp = withContext(Dispatchers.IO) {
+            WallpaperStore.readBytes()?.let { bytes ->
+                runCatching { Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
+            }
+        }
+    }
+    val wallpaperActive = wallpaperBmp != null
 
     GxkTheme(wallpaperActive = wallpaperActive) {
         val palette = LocalPalette.current
@@ -93,37 +112,54 @@ fun App(vault: CredentialVault, wallpaper: WallpaperHost) {
             }
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(if (wallpaperActive) Color.Transparent else palette.background),
-        ) {
-            TopBar(title = appTitle, subtitle = appSubtitle, busy = busy)
-            Box(modifier = Modifier.weight(1f)) {
-                val current = schedule
-                when {
-                    current == null && tab != TAB_SETTINGS -> EmptyState(onGoSettings = { tab = TAB_SETTINGS })
-                    tab == TAB_WEEK && current != null -> WeekScreen(schedule = current)
-                    tab == TAB_TODAY && current != null -> TodayScreen(schedule = current)
-                    else -> SettingsScreen(
-                        credentials = credentials,
-                        busy = busy,
-                        schedule = schedule,
-                        wallpaper = wallpaper,
-                        wallpaperActive = wallpaperActive,
-                        onWallpaperActiveChanged = { wallpaperActive = it },
-                        appTitle = appTitle,
-                        appSubtitle = appSubtitle,
-                        onAppearanceSaved = { t, s ->
-                            uiPrefs.save(t, s)
-                            appTitle = uiPrefs.title()
-                            appSubtitle = uiPrefs.subtitle()
-                        },
-                        onUpdate = { update() },
-                    )
-                }
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 背景图铺满，内容盖在上面；没有壁纸时用纯色底
+            val bmp = wallpaperBmp
+            if (bmp != null) {
+                Image(
+                    bitmap = bmp,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                // 压暗一点，保证文字可读
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(palette.surface.copy(alpha = 0.25f)),
+                )
+            } else {
+                Box(Modifier.fillMaxSize().background(palette.background))
             }
-            BottomBar(tab = tab, onSelect = { tab = it })
+
+            Column(modifier = Modifier.fillMaxSize()) {
+                TopBar(title = appTitle, subtitle = appSubtitle, busy = busy)
+                Box(modifier = Modifier.weight(1f)) {
+                    val current = schedule
+                    when {
+                        current == null && tab != TAB_SETTINGS -> EmptyState(onGoSettings = { tab = TAB_SETTINGS })
+                        tab == TAB_WEEK && current != null -> WeekScreen(schedule = current)
+                        tab == TAB_TODAY && current != null -> TodayScreen(schedule = current)
+                        else -> SettingsScreen(
+                            credentials = credentials,
+                            busy = busy,
+                            schedule = schedule,
+                            wallpaper = wallpaper,
+                            wallpaperActive = wallpaperActive,
+                            onWallpaperChanged = { wallpaperVersion++ },
+                            appTitle = appTitle,
+                            appSubtitle = appSubtitle,
+                            onAppearanceSaved = { t, s ->
+                                uiPrefs.save(t, s)
+                                appTitle = uiPrefs.title()
+                                appSubtitle = uiPrefs.subtitle()
+                            },
+                            onUpdate = { update() },
+                        )
+                    }
+                }
+                BottomBar(tab = tab, onSelect = { tab = it })
+            }
         }
 
         message?.let { text ->

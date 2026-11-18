@@ -23,6 +23,7 @@ import com.jianke.schedule.shared.net.newHttpClient
 import com.jianke.schedule.shared.platform.WallpaperHost
 import com.jianke.schedule.shared.platform.nowMillis
 import com.jianke.schedule.shared.storage.Credentials
+import com.jianke.schedule.shared.storage.WallpaperStore
 import kotlinx.coroutines.launch
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -41,7 +42,7 @@ fun SettingsScreen(
     schedule: Schedule?,
     wallpaper: WallpaperHost,
     wallpaperActive: Boolean,
-    onWallpaperActiveChanged: (Boolean) -> Unit,
+    onWallpaperChanged: () -> Unit,
     appTitle: String,
     appSubtitle: String,
     onAppearanceSaved: (String, String) -> Unit,
@@ -214,7 +215,8 @@ fun SettingsScreen(
                     wallpaper.pick { name ->
                         if (name != null) {
                             wallpaperStatus = "已应用"
-                            onWallpaperActiveChanged(true)
+                            // 由 App 重新读文件并解码（Compose 自己画背景）
+                            onWallpaperChanged()
                         } else {
                             // 取消、或者系统把相册选择器拦掉了——至少让用户知道点到了
                             wallpaperStatus = "没选到图片（取消，或相册权限被拦）"
@@ -231,7 +233,10 @@ fun SettingsScreen(
                     danger = true,
                     onClick = {
                         wallpaper.clear()
-                        onWallpaperActiveChanged(false)
+                        // Swift 侧删文件 + Kotlin 侧再删一次（桌面预览没有 Swift 实现）
+                        WallpaperStore.delete()
+                        wallpaperStatus = "已恢复默认背景"
+                        onWallpaperChanged()
                     },
                 )
             }

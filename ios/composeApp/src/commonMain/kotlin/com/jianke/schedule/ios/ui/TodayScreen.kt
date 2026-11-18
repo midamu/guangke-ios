@@ -59,7 +59,7 @@ fun TodayScreen(schedule: Schedule) {
                 Text(text = "今天没有课", style = Type.body)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "课表没更新过的话，去设置里点一次更新。",
+                    text = "课表存在本机，不会因为没更新就消失。",
                     style = Type.caption,
                     color = palette.subText,
                 )
